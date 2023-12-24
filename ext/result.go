@@ -16,7 +16,7 @@ type err[E any] struct {
 // Error handling with the `Result` type.
 /////////////////////////////////////////////////////////////////////////////
 
-type Result interface {
+type Result[T, E any] interface {
 	implResultForOkAndErr()
 }
 
@@ -27,11 +27,11 @@ func (_ err[E]) implResultForOkAndErr() {}
 // Wrap the values
 /////////////////////////////////////////////////////////////////////////
 
-func Ok[T any](t T) Result {
+func Ok[T, E any](t T) Result[T, E] {
 	return ok[T]{t}
 }
 
-func Err[E any](e E) Result {
+func Err[T, E any](e E) Result[T, E] {
 	return err[E]{e}
 }
 
@@ -39,39 +39,39 @@ func Err[E any](e E) Result {
 // Querying the contained values
 /////////////////////////////////////////////////////////////////////////
 
-func IsOk[A any](r Result) bool {
+func IsOk[T, E any](r Result[T, E]) bool {
 	var res bool
-	switch any(r).(type) {
-	case ok[A]:
+	switch r.(type) {
+	case ok[T]:
 		res = true
-	case err[A]:
+	case err[E]:
 		res = false
 	}
 	return res
 }
 
-func IsErr[A any](r Result) bool {
-	return !IsOk[A](r)
+func IsErr[T, E any](r Result[T, E]) bool {
+	return !IsOk[T](r)
 }
 
-func IsOkAnd[A any](r Result, f func(A) bool) bool {
+func IsOkAnd[T, E any](r Result[T, E], f func(T) bool) bool {
 	var res bool
-	switch x := any(r).(type) {
-	case ok[A]:
+	switch x := r.(type) {
+	case ok[T]:
 		res = f(x.t)
-	case err[A]:
+	case err[E]:
 		res = false
 	}
 	return res
 }
 
-func IsErrAnd[A any](r Result, f func(A) bool) bool {
+func IsErrAnd[T, E any](r Result[T, E], f func(E) bool) bool {
 	var res bool
-	switch x := any(r).(type) {
-	case err[A]:
-		res = f(x.e)
-	case ok[A]:
+	switch x := r.(type) {
+	case ok[T]:
 		res = false
+	case err[E]:
+		res = f(x.e)
 	}
 	return res
 }
@@ -80,23 +80,23 @@ func IsErrAnd[A any](r Result, f func(A) bool) bool {
 // Adapter for each variant
 /////////////////////////////////////////////////////////////////////////
 
-func OkToOption[A any](r Result) Option {
-	var res Option
-	switch x := any(r).(type) {
-	case ok[A]:
+func OkToOpt[T, E any](r Result[T, E]) Option[T] {
+	var res Option[T]
+	switch x := r.(type) {
+	case ok[T]:
 		res = Some(x.t)
-	case err[A]:
-		res = None()
+	case err[E]:
+		res = None[T]()
 	}
 	return res
 }
 
-func ErrToOption[A any](r Result) Option {
-	var res Option
-	switch x := any(r).(type) {
-	case ok[A]:
-		res = None()
-	case err[A]:
+func ErrToOpt[T, E any](r Result[T, E]) Option[E] {
+	var res Option[E]
+	switch x := r.(type) {
+	case ok[T]:
+		res = None[E]()
+	case err[E]:
 		res = Some(x.e)
 	}
 	return res
@@ -106,51 +106,117 @@ func ErrToOption[A any](r Result) Option {
 // Transforming contained values
 /////////////////////////////////////////////////////////////////////////
 
-func MapOk[A, U any](r Result, f func(A) U) Result {
-	var res Result
-	switch x := any(r).(type) {
-	case ok[A]:
-		res = Ok(f(x.t))
-	case err[A]:
-		res = x
-	}
-	return res
-}
-
-func MapErr[A, U any](r Result, f func(A) U) Result {
-	var res Result
-	switch x := any(r).(type) {
-	case ok[A]:
-		res = x
-	case err[A]:
-		res = Err(f(x.e))
-	}
-	return res
-}
-
-func MapOkOrElse[T, U any](r Result, fail func(T) U, succ func(T) U) Result {
-	var res Result
-	switch x := any(r).(type) {
+func MapOk[T, U, E any](r Result[T, E], f func(T) U) Result[U, E] {
+	var res Result[U, E]
+	switch x := r.(type) {
 	case ok[T]:
-		res = Ok(succ(x.t))
-	case err[T]:
-		res = Err(fail(x.e))
+		res = Ok[U, E](f(x.t))
+	case err[E]:
+		res = x
 	}
 	return res
 }
 
-func UnwrapOk[T any](r Result) T {
+func MapErr[T, E, F any](r Result[T, E], f func(E) F) Result[T, F] {
+	var res Result[T, F]
+	switch x := r.(type) {
+	case ok[T]:
+		res = x
+	case err[E]:
+		res = Err[T, F](f(x.e))
+	}
+	return res
+}
+
+func MapOkOrElse[T, E, U, F any](r Result[T, E], fail func(E) F, succ func(T) U) Result[U, F] {
+	var res Result[U, F]
+	switch x := r.(type) {
+	case ok[T]:
+		res = Ok[U, F](succ(x.t))
+	case err[E]:
+		res = Err[U, F](fail(x.e))
+	}
+	return res
+}
+
+func UnwrapOk[T, E any](r Result[T, E]) T {
 	var res T
-	switch x := any(r).(type) {
+	switch x := r.(type) {
 	case ok[T]:
 		res = x.t
 	}
 	return res
 }
 
-func UnwrapErr[E any](r Result) E {
+func UnwrapErr[T, E any](r Result[T, E]) E {
 	var res E
-	switch x := any(r).(type) {
+	switch x := r.(type) {
+	case err[E]:
+		res = x.e
+	}
+	return res
+}
+
+func UnwrapOkOr[T, E any](r Result[T, E], v T) T {
+	var res T
+	switch x := r.(type) {
+	case ok[T]:
+		res = x.t
+	case err[E]:
+		res = v
+	}
+	return res
+}
+
+func UnwrapErrOr[T, E any](r Result[T, E], v E) E {
+	var res E
+	switch x := r.(type) {
+	case ok[T]:
+		res = v
+	case err[E]:
+		res = x.e
+	}
+	return res
+}
+
+func UnwrapOkOrElse[T, E any](r Result[T, E], f func() T) T {
+	var res T
+	switch x := r.(type) {
+	case ok[T]:
+		res = x.t
+	case err[E]:
+		res = f()
+	}
+	return res
+}
+
+func UnwrapErrOrElse[T, E any](r Result[T, E], f func() E) E {
+	var res E
+	switch x := r.(type) {
+	case ok[T]:
+		res = f()
+	case err[E]:
+		res = x.e
+	}
+	return res
+}
+
+func UnwrapOkOrDefault[T, E any](r Result[T, E]) T {
+	var res T
+	switch x := r.(type) {
+	case ok[T]:
+		res = x.t
+	case err[E]:
+		res = *new(T)
+	}
+	return res
+}
+
+func UnwrapErrOrDefault[T, E any](r Result[T, E]) E {
+	var res E
+	switch x := r.(type) {
+	case ok[T]:
+		res = *new(E)
 	case err[E]:
 		res = x.e
 	}
