@@ -1,11 +1,11 @@
 package ext
 
 type Iterator[T any] interface {
-	Next(iter Iterator[T]) Option[T]
+	Next() Option[T]
 }
 
 func Fold[A, B any](iter Iterator[A], acc B, f func(B, A) B) B {
-	for it := iter.Next(iter); IsSome(it); {
+	for it := iter.Next(); IsSome(it); {
 		acc = f(acc, UnwrapOpt(it))
 	}
 	return acc
@@ -25,7 +25,7 @@ func Last[T any](iter Iterator[T]) Option[T] {
 
 func AdvanceBy[T any](iter Iterator[T], n uint) Result[Unit, uint] {
 	for i := uint(0); i < n; i++ {
-		if IsNone(iter.Next(iter)) {
+		if IsNone(iter.Next()) {
 			return Err[Unit](i)
 		}
 	}
@@ -36,5 +36,5 @@ func Nth[T any](iter Iterator[T], n uint) Option[T] {
 	if IsNone(OkToOpt(AdvanceBy(iter, n))) {
 		return None[T]()
 	}
-	return iter.Next(iter)
+	return iter.Next()
 }
